@@ -1,0 +1,25 @@
+# Render Blueprint — deploys the MediRoute backend as a free Docker web service.
+# Usage: in the Render dashboard, "New +" → "Blueprint" → point at this repo.
+services:
+  - type: web
+    name: mediroute-api
+    runtime: docker
+    plan: free
+    rootDir: backend/MediRoute.API
+    dockerfilePath: Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: UseInMemoryDatabase
+        value: "true"
+      - key: JWT__Secret
+        generateValue: true
+      - key: JWT__Issuer
+        value: MediRoute
+      - key: JWT__Audience
+        value: MediRouteUsers
+      # Comma-separated origins are read in Program.cs from Cors:AllowedOrigins (array).
+      # Render doesn't support array env vars, so we expose a single CSV and parse it in code.
+      - key: Cors__AllowedOriginsCsv
+        value: https://mediroute.pages.dev,http://localhost:5173

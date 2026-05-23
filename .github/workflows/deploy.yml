@@ -1,0 +1,82 @@
+name: Build & Deploy MediRoute
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '20'
+  BACKEND_PROJECT: mediroute/backend/MediRoute.API/MediRoute.API.csproj
+  BACKEND_SOLUTION: mediroute/backend/MediRoute.sln
+  FRONTEND_DIR: mediroute/frontend
+  AZURE_WEBAPP_NAME: mediroute-api
+
+jobs:
+  backend:
+    name: Build & test backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Restore
+        run: dotnet restore ${{ env.BACKEND_SOLUTION }}
+      - name: Build
+        run: dotnet build ${{ env.BACKEND_SOLUTION }} --configuration Release --no-restore
+      - name: Test
+        run: dotnet test ${{ env.BACKEND_SOLUTION }} --configuration Release --no-build --verbosity normal
+      - name: Publish
+        run: dotnet publish ${{ env.BACKEND_PROJECT }} -c Release -o publish
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-publish
+          path: publish
+
+  frontend:
+    name: Build frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.FRONTEND_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ${{ env.FRONTEND_DIR }}/package-lock.json
+      - name: Install deps
+        run: npm ci || npm install
+      - name: Build
+        run: npm run build
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: ${{ env.FRONTEND_DIR }}/dist
+
+  deploy:
+    name: Deploy backend to Azure App Service
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-publish
+          path: publish
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: publish

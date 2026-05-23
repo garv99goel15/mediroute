@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+dist/
+.vite/
+
+# env
+.env.local
+.env.*.local
+
+# editor
+.vscode/
+.idea/
+*.suo
+*.user
+
+# dotnet
+bin/
+obj/
+*.csproj.user
+publish/
+
+# logs
+*.log

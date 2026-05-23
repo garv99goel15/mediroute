@@ -1,0 +1,7 @@
+# Ignore everything not needed inside the Docker image.
+bin/
+obj/
+*.user
+*.suo
+.vs/
+appsettings.Development.json
