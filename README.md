@@ -290,4 +290,4 @@ For full production CORS, set the env var `Cors__AllowedOriginsCsv` to a comma-s
 ---
 
 ## License
-Released under the [MIT License](LICENSE) — free to use, modify, and distribute with attribution.
+Released — free to use, modify, and distribute with attribution.
