@@ -1,9 +1,17 @@
 # MediRoute — Real-Time Hospital Resource Navigator
 
+![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![SignalR](https://img.shields.io/badge/SignalR-realtime-512BD4?logo=microsoft&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-3-38BDF8?logo=tailwindcss&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 > A live, geolocation-aware platform where patients can find the **nearest hospital with available ICU beds, specialists, emergency services, or OTs** — updated in real time as hospital admins change resource status.
 
 **Author:** Garv Goel · [github.com/garv99goel15](https://github.com/garv99goel15)
-**Live demo:** _(add your Azure URL here)_
+
+![Patient search](docs/screenshots/01-patient-search.png)
 
 ---
 
@@ -47,17 +55,18 @@ Key flow on an admin update:
 | Layer              | Tech                                                  |
 | ------------------ | ----------------------------------------------------- |
 | Backend            | ASP.NET Core 8 Web API (C#)                           |
-| Real-time          | SignalR                                               |
-| Database           | SQL Server + EF Core 8 (in-memory option included)    |
+| Real-time          | SignalR hub with per-hospital groups                  |
+| Database           | SQL Server + EF Core 8 (in-memory option for demos)   |
 | Auth               | JWT Bearer (Access 15 min + Refresh 7 days)           |
-| Caching            | `IMemoryCache` (60s TTL, invalidated on writes)       |
+| Caching            | `IMemoryCache` — 60s availability TTL, 30s search TTL with lat/lng quantization |
+| Rate limiting      | Built-in .NET 8 fixed-window limiter (5/min on auth, 60/min on search) |
+| Observability      | Serilog structured logging + `/healthz` health check  |
 | Validation         | FluentValidation                                      |
-| Frontend           | React 18 + TypeScript + Vite                          |
+| Frontend           | React 18 + TypeScript + Vite (code-split, memoized)   |
 | State              | Zustand                                               |
 | Maps               | Leaflet.js + react-leaflet (OpenStreetMap tiles)      |
 | Styling            | Tailwind CSS                                          |
 | Tests              | xUnit + Moq                                           |
-| CI/CD              | GitHub Actions, Azure App Service deployment ready    |
 
 ---
 
@@ -237,19 +246,46 @@ Covers `HospitalSearchService` (scoring, filtering, ranking), `AvailabilityServi
 
 ## Screenshots
 
-| Patient search | Hospital detail | Admin dashboard |
-| -------------- | --------------- | --------------- |
-| _add screenshot_ | _add screenshot_ | _add screenshot_ |
+### Patient search — list view with live availability badges
+![Patient list](docs/screenshots/01-patient-search.png)
+
+### Patient search — map view (Leaflet, lazy-loaded)
+![Patient map](docs/screenshots/04-patient-map.png)
+
+### Hospital admin dashboard — bed / doctor / ambulance management
+![Admin dashboard](docs/screenshots/03-admin-dashboard.png)
+
+### Three-role sign-in
+![Admin login](docs/screenshots/02-admin-login.png)
 
 ---
 
-## Deployment (Azure App Service)
+## Engineering highlights (what makes this resume-worthy)
 
-1. Create an Azure Web App (Linux, .NET 8).
-2. Add the publish profile as the GitHub secret `AZURE_WEBAPP_PUBLISH_PROFILE`.
-3. Push to `main` — `.github/workflows/deploy.yml` will build, test, and deploy.
+- **Real-time everywhere.** SignalR `ResourceHub` with per-hospital groups; admin edits push deltas to every patient browser currently viewing that hospital without polling.
+- **Layered caching.** Per-hospital availability cached 60 s and invalidated on every admin write. Search results cached 30 s with lat/lng quantized to a ~110 m grid so nearby patients share entries.
+- **Bounded memory.** `MemoryCache` size-limited to 10 000 entries to prevent runaway memory under cache-key explosion.
+- **Smart search ranking.** Combined Availability (60 %) + Proximity (40 %) score with hard filter on zero-availability for the requested service.
+- **Bounding-box pre-filter.** `GetNearbyAsync` narrows DB rows with a lat/lng box before computing Haversine — O(N) over candidates instead of all rows.
+- **Rate-limited APIs.** `/api/auth/*` capped at 5 req/min/IP (brute-force defense); `/api/hospitals/search` at 60 req/min/IP.
+- **Structured observability.** Serilog request logging + `/healthz` health endpoint with EF Core DB check — plug into any APM/uptime monitor.
+- **Auth that doesn’t suck.** JWT access + refresh-token rotation, role-based authorization (`SuperAdmin`, `HospitalAdmin`), JWT-via-query-string support for SignalR.
+- **Frontend perf.** Map view (Leaflet ~150 KB gzip) lazy-loaded only when the user clicks Map; `HospitalCard` memoized so a SignalR patch re-renders only the affected card.
+- **Graceful geolocation.** Permission-denied falls back to Delhi center with a clear retry banner.
+- **Production hardening.** CORS origins driven from configuration (array or CSV env var), Docker image + Render blueprint included.
 
-Frontend can be hosted on Azure Static Web Apps, Vercel, or Netlify — point `VITE_API_BASE_URL` and `VITE_SIGNALR_HUB_URL` at your deployed API.
+---
+
+## Deployment
+
+The repo ships with everything needed for a one-click free deploy:
+
+- `backend/MediRoute.API/Dockerfile` — multi-stage .NET 8 image, honors `$PORT` for Render / Fly / Koyeb / any container host.
+- `render.yaml` — [Render Blueprint](https://render.com/docs/blueprint-spec) that provisions the backend as a free Docker web service with auto-generated JWT secret and a `/healthz` health check.
+- `frontend/vercel.json` and `frontend/public/_redirects` — SPA fallback for Vercel / Netlify / Cloudflare Pages.
+- `frontend/.env.production.example` — template pointing at the Render API URL.
+
+For full production CORS, set the env var `Cors__AllowedOriginsCsv` to a comma-separated list of frontend origins.
 
 ---
 
